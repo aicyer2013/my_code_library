@@ -1,0 +1,8 @@
+#source Variables
+largest = int(input("Enter a number: "))
+#code line
+for i in range(4):
+    number = int(input("enter another number: "))
+    if number > largest:
+        largest = number
+print(f"The largest number is {largest}")
