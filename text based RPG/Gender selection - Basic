@@ -1,0 +1,18 @@
+def choose_gender():
+    while True:
+        print("\nChoose your gender: ")
+        print("1. Male")
+        print("2. Female")
+        print("3. Non-Binary")
+
+        choice = input("Enter your gender: ").strip()
+        if choice == "1":
+            return "Male"
+        elif choice == "2":
+            return "Female"
+        elif choice == "3":
+            return "Non-Binary"
+        else:
+            print("Please enter a valid option.")
+player_gender = choose_gender()
+print(f"\nYou have chosen to play {player_gender}.")
