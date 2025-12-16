@@ -1,0 +1,4 @@
+def greet_class(name):
+    print(f"Welcome to Hynafol, {name}!")
+
+greet_class("Cleric")
