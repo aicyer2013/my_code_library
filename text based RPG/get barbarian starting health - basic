@@ -1,0 +1,27 @@
+def get_starting_health(player_class):
+    player_class = player_class.lower()
+    if player_class == "fighter":
+        return 150
+    elif player_class == "mage":
+        return 50
+    elif player_class == "bard":
+        return 85
+    elif player_class == "Barbarian":
+        return 180
+    elif player_class == "Cleric":
+        return 90
+    elif player_class == "ranger":
+        return 90
+    elif player_class == "Rogue":
+        return 85
+    elif player_class == "warlock":
+        return 70
+    elif player_class == "artificer":
+        return 75
+    elif player_class == "programmer":
+        return 100
+    else:
+        return 0
+
+health = get_starting_health("barbarian")
+print(health)
