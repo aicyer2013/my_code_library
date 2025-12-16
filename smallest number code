@@ -1,0 +1,9 @@
+#source Variables
+smallest = int(input("Enter a number: "))
+#script
+
+for i in range(4):
+    number = int(input("enter another number: "))
+    if number < smallest:
+        smallest = number
+print(f"The smallest number is {smallest}")
