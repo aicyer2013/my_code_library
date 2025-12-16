@@ -1,0 +1,11 @@
+# ask the user for their name and birth year
+# print how old they are
+try:
+    birth_year = int(input("enter your birth year: "))
+    year_now = int(input("enter the current year now: "))
+    name = input("enter your name: ")
+    age = year_now - birth_year
+    age_next_year = age + 1
+    print(f"Hello, {name}! you will be {age_next_year} next year")
+except ValueError:
+    print("Please enter a valid year")
