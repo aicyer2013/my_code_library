@@ -1,0 +1,35 @@
+import random
+import re
+
+attempts = 5
+answer = "fus roh dah"
+
+hints = [
+    "Three words are required.",
+    "The words are ancient.",
+    "The first word is 'fus'...",
+    "Say them together.",
+    "Force, Balance, Push.",
+    "Unrelenting force is what they mean."
+]
+
+random.shuffle(hints)
+print("You approach a rune-covered door.")
+
+while attempts > 0:
+    guess = input("Enter the rune combination: ").lower()
+    guess = re.sub(r"[^\w\s]", "", guess)   # remove punctuation
+    guess = guess.replace("-", " ")
+    guess = " ".join(guess.split())         # normalize spaces
+
+    if guess == answer:
+        print("The rune hums. The wall opens. You may proceed.")
+        break
+
+    attempts -= 1
+    if attempts > 0:
+        print(random.choice(hints))
+        print(f"Attempts left: {attempts}")
+
+if attempts == 0:
+    print("The rune fades. The door remains sealed.")
