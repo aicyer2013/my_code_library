@@ -1,0 +1,47 @@
+player_class = ""
+
+while True:
+    print("\nWelcome adventurer, Please select your starting class")
+    print("1. fighter")
+    print("2. ranger")
+    print("3. cleric")
+    print("4. rogue")
+    print("5. barbarian")
+    print("6. mage")
+    print("7. artificer")
+    print("8. warlock")
+    print("9. programmer")
+
+    choice = input("Enter your choice: ").strip()
+
+    if choice == "1":
+        player_class = "fighter"
+        break
+    elif choice == "2":
+        player_class = "ranger"
+        break
+    elif choice == "3":
+        player_class = "cleric"
+        break
+    elif choice == "4":
+        player_class = "rogue"
+        break
+    elif choice == "5":
+        player_class = "barbarian"
+        break
+    elif choice == "6":
+        player_class = "mage"
+        break
+    elif choice == "7":
+        player_class = "artificer"
+        break
+    elif choice == "8":
+        player_class = "warlock"
+        break
+    elif choice == "9":
+        player_class = "programmer"
+        break
+    else:
+        print("Please enter a valid choice.")
+
+print(f"\nYou have chosen the path of the {player_class}.")
