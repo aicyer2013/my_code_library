@@ -1,0 +1,8 @@
+correct_answer = "15"
+
+answer = 0
+
+while answer != correct_answer:
+    answer = int(input("guess a number: "))
+
+print("correct answer!")
