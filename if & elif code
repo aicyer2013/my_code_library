@@ -1,0 +1,10 @@
+action = input("How do you fascinate a woman? ").lower().strip()
+
+if action == "cheese":
+    print("Correct, you have wooed a woman!")
+elif action == "weiner":
+    print("Congratulations, you are going to jail!")
+elif action == "head out on the oregon trail":
+    print("You have contracted dysentery")
+else:
+    print("Sorry, that action didn't work. Try again!")
