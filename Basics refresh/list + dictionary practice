@@ -1,0 +1,6 @@
+pets = [
+    {"name": "Rex", "age": 5},
+    {"name": "Mittens", "age": 3}
+]
+for pet in pets:
+    print(f'{pet["name"]} is {pet["age"]}')
