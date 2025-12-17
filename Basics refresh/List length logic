@@ -1,0 +1,4 @@
+# this counts how many "items" are in the the list overall
+
+items = ["apple", "banana", "cherry"]
+print(len(items))
