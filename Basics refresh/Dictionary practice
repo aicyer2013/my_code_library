@@ -1,0 +1,6 @@
+student = {
+    "name": "Alex",
+    "age": 20
+}
+
+print(f"{student['name']} is {student['age']} years old")
