@@ -1,0 +1,5 @@
+def double_number(number):
+    return number * 2
+num = 5
+result = double_number(num)
+print(f"The double of {num} is {result}")
