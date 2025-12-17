@@ -1,0 +1,6 @@
+fruits = ["apple", "banana", "cherry"]
+answer = input("Enter a fruit name: ").lower().strip()
+if answer in fruits:
+    print("Fruit found")
+else:
+    print("Fruit not found")
