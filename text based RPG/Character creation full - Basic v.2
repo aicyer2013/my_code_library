@@ -1,0 +1,97 @@
+#----functions-----
+# Choose your name
+def get_player_name():
+    return input("Enter your name? ")
+# Choose your gender
+def choose_gender():
+    while True:
+        print("\nChoose your gender: ")
+        print("1. Male")
+        print("2. Female")
+        print("3. Non-Binary")
+
+        choice = input("Enter your gender: ").lower().strip()
+        if choice == "1" or choice == "male":
+            return "Male"
+        elif choice == "2" or choice == "female":
+            return "Female"
+        elif choice == "3" or choice == "non-binary":
+            return "Non-Binary"
+        else:
+            print("Please enter a valid option.")
+# Choose your class
+def choose_class():
+    while True:
+        print("\nChoose your class:")
+        print("1. fighter")
+        print("2. ranger")
+        print("3. cleric")
+        print("4. rogue")
+        print("5. barbarian")
+        print("6. mage")
+        print("7. artificer")
+        print("8. warlock")
+        print("9. programmer")
+
+        choice = input("Enter your choice: ").lower().strip()
+
+        if choice == "1":
+            return "fighter"
+        elif choice == "2":
+            return "ranger"
+        elif choice == "3":
+            return "cleric"
+        elif choice == "4":
+            return "rogue"
+        elif choice == "5":
+            return "barbarian"
+        elif choice == "6":
+            return "mage"
+        elif choice == "7":
+            return "artificer"
+        elif choice == "8":
+            return "warlock"
+        elif choice == "9":
+            return "programmer"
+        else:
+            print("Invalid choice.")
+# Starting health based off your class
+def get_starting_health(player_class):
+    player_class = player_class.lower()
+    if player_class == "fighter":
+        return 150
+    elif player_class == "mage":
+        return 50
+    elif player_class == "barbarian":
+        return 180
+    elif player_class == "cleric":
+        return 90
+    elif player_class == "ranger":
+        return 90
+    elif player_class == "rogue":
+        return 85
+    elif player_class == "warlock":
+        return 70
+    elif player_class == "artificer":
+        return 75
+    elif player_class == "programmer":
+        return 100
+    else:
+        return 0
+
+#----main character creation flow----
+
+def main():
+    name = get_player_name()
+    player_gender = choose_gender()
+    player_class = choose_class()
+    health = get_starting_health(player_class)
+
+    print("\nCharacter created!")
+    print(f"name: {name}"
+          f"\ngender: {player_gender}"
+          f"\nclass: {player_class}"
+          f"\nhealth: {health}")
+
+
+main()
