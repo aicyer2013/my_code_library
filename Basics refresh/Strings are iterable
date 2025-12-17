@@ -1,0 +1,9 @@
+#strings are iterable, just like lists
+#in this case:
+#first iteration would execute the following logic: char = h --> printed
+#second iteration would execute: char = i --> printed
+
+word = "hi"
+
+for char in word:
+    print(char)
