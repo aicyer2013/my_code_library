@@ -1,0 +1,14 @@
+#he function has no return statement
+#→ Python automatically returns None
+
+#result is assigned None
+
+#print(result) prints:
+# Hi
+# None
+
+def say_hi():
+    print("Hi")
+
+result = say_hi()
+print(result)
