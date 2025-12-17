@@ -1,0 +1,6 @@
+# range(start, stop, step)
+# start: the first value
+# stop: the value you do NOT include
+# step: how much the value changes each loop
+for i in range(10, 4, -2):
+    print(i)
