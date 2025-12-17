@@ -1,0 +1,6 @@
+#indexing starts at 0
+#a would be 0, b 1, and c 2.
+items = ["a", "b", "c"]
+items[1] = "x"
+
+print(items)
