@@ -1,0 +1,7 @@
+#this is like the List index from earlier, this will print the 1 line in the index of the word
+#so in this case, 1 is y
+#strings are zero-indexed
+
+text = "Python"
+
+print(text[1])
