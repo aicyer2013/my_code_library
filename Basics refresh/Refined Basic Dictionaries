@@ -1,0 +1,16 @@
+#Dictionaries are callable lists.
+#numbers do not need the " " to be called properly
+#spacing your prints like here provides a much more professional look that it all residing on the same line.
+#I've found it good practice to include notes such as this, and add "f" in all my prints
+#.title() and other such things are also good practice
+car = {
+    "make": "ford",
+    "model": "focus",
+    "year": 2008,
+    "trim": "LE"
+}
+print(f"I own a {car['year']} "
+f"{car['make'].title()} "
+f"{car['model'].title()} " 
+f"in the {car['trim']} trim"
+      )
