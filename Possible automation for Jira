@@ -1,0 +1,198 @@
+import os
+import requests
+import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv()  # Optional: if you store secrets in a .env file
+
+# -----------------------------
+# CONFIGURATION
+# -----------------------------
+JIRA_BASE_URL = os.getenv("JIRA_BASE_URL", "https://your-domain.atlassian.net")
+JIRA_EMAIL = os.getenv("JIRA_EMAIL", "you@example.com")
+JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN", "YOUR_API_TOKEN_HERE")
+
+# JQL to find termination tickets – customize this for your Jira
+JQL_QUERY = 'project = IT AND issuetype = "Termination" AND status != Done'
+
+# Name of the custom field that holds the checklist (if applicable).
+# If you don't know it yet, run the "inspect_fields" helper (provided below).
+CHECKLIST_FIELD_ID = "customfield_12345"  # e.g. customfield_12345
+
+# Keywords that indicate equipment-related checklist items
+EQUIPMENT_KEYWORDS = [
+    "laptop",
+    "monitor",
+    "docking station",
+    "phone",
+    "badge",
+    "access card",
+    "tablet",
+    "headset",
+    "peripherals",
+]
+
+OUTPUT_EXCEL_FILE = "expected_equipment_returns.xlsx"
+
+
+# -----------------------------
+# JIRA API HELPER
+# -----------------------------
+def jira_get(path: str, params=None):
+    """
+    Simple helper for Jira GET requests.
+    """
+    url = f"{JIRA_BASE_URL}/rest/api/3/{path.lstrip('/')}"
+    auth = (JIRA_EMAIL, JIRA_API_TOKEN)
+    headers = {"Accept": "application/json"}
+    response = requests.get(url, headers=headers, auth=auth, params=params)
+    response.raise_for_status()
+    return response.json()
+
+
+# -----------------------------
+# OPTIONAL: DISCOVER FIELD NAMES
+# -----------------------------
+def inspect_fields():
+    """
+    Helper to print all fields so you can locate the checklist custom field.
+    Run this once to figure out which field holds your checklist.
+    """
+    fields = jira_get("field")
+    for f in fields:
+        print(f"{f['id']}: {f['name']}")
+
+
+# -----------------------------
+# CHECKLIST PARSING LOGIC
+# -----------------------------
+def extract_checklist_from_issue(issue: dict) -> list[str]:
+    """
+    Extract checklist items from an issue.
+
+    You will likely need to customize this depending on
+    how your checklist is stored.
+
+    Strategy 1: Dedicated customfield (array of items).
+    Strategy 2: Parse from description text.
+    """
+    fields = issue.get("fields", {})
+
+    # Strategy 1: Custom field that stores checklist items
+    checklist_raw = fields.get(CHECKLIST_FIELD_ID)
+
+    checklist_items: list[str] = []
+
+    if isinstance(checklist_raw, list):
+        # e.g. [{"name": "Return laptop"}, {"name": "Disable accounts"}]
+        for item in checklist_raw:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("value") or ""
+                if name:
+                    checklist_items.append(name)
+            elif isinstance(item, str):
+                checklist_items.append(item)
+
+    elif isinstance(checklist_raw, str):
+        # If the field is just a big text blob, split by lines
+        checklist_items.extend(
+            [line.strip("- ").strip() for line in checklist_raw.splitlines() if line.strip()]
+        )
+
+    # Strategy 2: (Fallback) Parse from description if needed
+    if not checklist_items:
+        description = fields.get("description") or ""
+        if isinstance(description, str):
+            for line in description.splitlines():
+                # example: look for lines starting with "-" or "*"
+                if line.strip().startswith(("-", "*", "[ ]", "[x]")):
+                    cleaned = line.strip().lstrip("-*").lstrip("[x]").lstrip("[ ]").strip()
+                    if cleaned:
+                        checklist_items.append(cleaned)
+
+    return checklist_items
+
+
+def filter_equipment_items(items: list[str]) -> list[str]:
+    """
+    Return only checklist items that look like equipment/asset items,
+    based on keywords.
+    """
+    equipment_items = []
+    for item in items:
+        lower_item = item.lower()
+        if any(keyword in lower_item for keyword in EQUIPMENT_KEYWORDS):
+            equipment_items.append(item)
+    return equipment_items
+
+
+# -----------------------------
+# MAIN LOGIC
+# -----------------------------
+def fetch_termination_tickets_and_export():
+    start_at = 0
+    max_results = 50
+
+    all_rows = []
+
+    while True:
+        search_result = jira_get(
+            "search",
+            params={
+                "jql": JQL_QUERY,
+                "startAt": start_at,
+                "maxResults": max_results,
+            },
+        )
+
+        issues = search_result.get("issues", [])
+        if not issues:
+            break
+
+        for issue in issues:
+            key = issue.get("key")
+            fields = issue.get("fields", {})
+
+            summary = fields.get("summary", "")
+            assignee = (fields.get("assignee") or {}).get("displayName", "")
+            reporter = (fields.get("reporter") or {}).get("displayName", "")
+            status = (fields.get("status") or {}).get("name", "")
+            termination_date = fields.get("duedate")  # Or your custom termination date field
+
+            checklist_items = extract_checklist_from_issue(issue)
+            equipment_items = filter_equipment_items(checklist_items)
+
+            if not equipment_items:
+                # If you only care about issues that have equipment items, skip the rest
+                continue
+
+            for item in equipment_items:
+                row = {
+                    "Issue Key": key,
+                    "Summary": summary,
+                    "Assignee": assignee,
+                    "Reporter": reporter,
+                    "Status": status,
+                    "Termination Date": termination_date,
+                    "Equipment Item": item,
+                }
+                all_rows.append(row)
+
+        start_at += max_results
+        if start_at >= search_result.get("total", 0):
+            break
+
+    if not all_rows:
+        print("No equipment checklist items found for the given JQL.")
+        return
+
+    df = pd.DataFrame(all_rows)
+    df.to_excel(OUTPUT_EXCEL_FILE, index=False)
+    print(f"Exported {len(all_rows)} equipment items to {OUTPUT_EXCEL_FILE}")
+
+
+if __name__ == "__main__":
+    # Uncomment this once if you need to discover the checklist field ID:
+    # inspect_fields()
+
+    fetch_termination_tickets_and_export()
