@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""
+Sync Amazon WorkSpaces -> Drata Assets
+
+Env vars:
+  AWS_REGION                (e.g., us-east-1)
+  DRATA_API_KEY             (Drata Public API v2 key)
+  DRATA_BASE_URL            (optional; default https://public-api.drata.com/public/v2)
+  DRATA_DEFAULT_OWNER_ID    (fallback numeric user id in Drata, required if Workspace UserName isn't an email match)
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import json
+import time
+from typing import Dict, Any, Iterable, Optional, Tuple
+
+import boto3
+import botocore
+import requests
+
+
+DRATA_BASE_URL = os.getenv("DRATA_BASE_URL", "https://public-api.drata.com/public/v2").rstrip("/")
+DRATA_API_KEY = os.getenv("DRATA_API_KEY")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+DEFAULT_OWNER_ID = os.getenv("DRATA_DEFAULT_OWNER_ID")
+
+if not DRATA_API_KEY:
+    print("ERROR: DRATA_API_KEY is required.", file=sys.stderr)
+    sys.exit(2)
+
+if DEFAULT_OWNER_ID is not None:
+    try:
+        DEFAULT_OWNER_ID_INT = int(DEFAULT_OWNER_ID)
+    except ValueError:
+        print("ERROR: DRATA_DEFAULT_OWNER_ID must be an integer.", file=sys.stderr)
+        sys.exit(2)
+else:
+    DEFAULT_OWNER_ID_INT = None
+
+
+def drata_headers() -> Dict[str, str]:
+    return {
+        "Authorization": f"Bearer {DRATA_API_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+
+def drata_get_all(endpoint: str, params: Optional[Dict[str, Any]] = None, page_size: int = 50) -> Iterable[Dict[str, Any]]:
+    """
+    Cursor-paginated GET helper for Drata v2 list endpoints.
+    """
+    cursor = None
+    params = dict(params or {})
+    params["size"] = min(max(int(page_size), 1), 50)
+
+    while True:
+        if cursor:
+            params["cursor"] = cursor
+        else:
+            params.pop("cursor", None)
+
+        url = f"{DRATA_BASE_URL}{endpoint}"
+        resp = requests.get(url, headers=drata_headers(), params=params, timeout=30)
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Drata GET {endpoint} failed: {resp.status_code} {resp.text}")
+
+        payload = resp.json()
+        for item in payload.get("data", []) or []:
+            yield item
+
+        cursor = (payload.get("pagination") or {}).get("cursor")
+        if not cursor:
+            break
+
+
+def drata_post(endpoint: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    url = f"{DRATA_BASE_URL}{endpoint}"
+    resp = requests.post(url, headers=drata_headers(), data=json.dumps(body), timeout=30)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Drata POST {endpoint} failed: {resp.status_code} {resp.text}")
+    return resp.json()
+
+
+def drata_put(endpoint: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    url = f"{DRATA_BASE_URL}{endpoint}"
+    resp = requests.put(url, headers=drata_headers(), data=json.dumps(body), timeout=30)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Drata PUT {endpoint} failed: {resp.status_code} {resp.text}")
+    return resp.json()
+
+
+def aws_account_id(sts_client) -> str:
+    return sts_client.get_caller_identity()["Account"]
+
+
+def list_workspaces(workspaces_client) -> Iterable[Dict[str, Any]]:
+    paginator = workspaces_client.get_paginator("describe_workspaces")
+    for page in paginator.paginate():
+        for ws in page.get("Workspaces", []) or []:
+            yield ws
+
+
+def build_user_email_to_id_map() -> Dict[str, int]:
+    """
+    Drata Users list doesn't advertise an email filter, so we fetch and map locally.
+    """
+    email_to_id: Dict[str, int] = {}
+    for u in drata_get_all("/users", params={"expand[]": "roles"}):
+        email = (u.get("email") or "").strip().lower()
+        uid = u.get("id")
+        if email and isinstance(uid, int):
+            email_to_id[email] = uid
+    return email_to_id
+
+
+def build_existing_assets_by_external_id() -> Dict[str, int]:
+    """
+    Build externalId -> assetId so we can "upsert".
+    """
+    external_to_asset_id: Dict[str, int] = {}
+    for a in drata_get_all("/assets", params={"sort": "updatedAt", "sortDir": "DESC"}):
+        ext = a.get("externalId")
+        aid = a.get("id")
+        if isinstance(ext, str) and ext and isinstance(aid, int):
+            external_to_asset_id[ext] = aid
+    return external_to_asset_id
+
+
+def workspace_owner_id(ws_owner: Optional[str], email_to_id: Dict[str, int]) -> int:
+    """
+    WorkSpaces 'UserName' is often an email; if not, fallback to DRATA_DEFAULT_OWNER_ID.
+    """
+    if ws_owner:
+        candidate = ws_owner.strip().lower()
+        if "@" in candidate and candidate in email_to_id:
+            return email_to_id[candidate]
+
+    if DEFAULT_OWNER_ID_INT is None:
+        raise RuntimeError(
+            f"Could not resolve ownerId for WorkSpaces owner={ws_owner!r}. "
+            f"Set DRATA_DEFAULT_OWNER_ID (numeric) or ensure WorkSpaces UserName matches a Drata user's email."
+        )
+    return DEFAULT_OWNER_ID_INT
+
+
+def make_asset_payload(ws: Dict[str, Any], aws_acct: str, owner_id: int) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    Drata Create Asset requires: name, description, assetClassTypes, assetType, ownerId (and optional externalId/externalOwnerId).
+    For updates, Drata Update Asset accepts description + notes.
+    """
+    ws_id = ws.get("WorkspaceId", "")
+    directory_id = ws.get("DirectoryId", "")
+    user_name = ws.get("UserName", "")
+    bundle_id = ws.get("BundleId", "")
+    state = ws.get("State", "")
+    ip = ws.get("IpAddress", "")
+    comp = ws.get("ComputerName", "")
+
+    name = f"Amazon WorkSpace {ws_id}"
+    desc = f"Amazon WorkSpaces virtual desktop for user '{user_name}' (state={state}, region={AWS_REGION})."
+    notes = (
+        f"AWS Account: {aws_acct}\n"
+        f"Region: {AWS_REGION}\n"
+        f"WorkspaceId: {ws_id}\n"
+        f"DirectoryId: {directory_id}\n"
+        f"UserName: {user_name}\n"
+        f"BundleId: {bundle_id}\n"
+        f"ComputerName: {comp}\n"
+        f"IpAddress: {ip}\n"
+    ).strip()
+
+    create_payload = {
+        "name": name[:191],
+        "description": desc[:191],
+        "assetClassTypes": ["COMPUTE"],
+        "assetType": "VIRTUAL",
+        "ownerId": owner_id,
+        # Use externalId for idempotency:
+        "externalId": ws_id,
+        "externalOwnerId": aws_acct,
+        # Optional extras:
+        "associatedId": user_name[:191] if user_name else None,
+        "notes": notes[:191],  # Create endpoint allows notes
+    }
+    # Remove Nones
+    create_payload = {k: v for k, v in create_payload.items() if v is not None}
+
+    update_payload = {
+        "description": desc[:191],
+        "notes": notes[:191],
+    }
+
+    return create_payload, update_payload
+
+
+def main() -> int:
+    print(f"Drata base: {DRATA_BASE_URL}")
+    print(f"AWS region: {AWS_REGION}")
+
+    # AWS clients
+    session = boto3.Session(region_name=AWS_REGION)
+    ws_client = session.client("workspaces")
+    sts_client = session.client("sts")
+
+    try:
+        acct = aws_account_id(sts_client)
+    except botocore.exceptions.BotoCoreError as e:
+        print(f"ERROR: AWS sts:GetCallerIdentity failed: {e}", file=sys.stderr)
+        return 2
+
+    print(f"AWS account: {acct}")
+
+    # Drata lookups
+    print("Loading Drata users...")
+    email_to_id = build_user_email_to_id_map()
+    print(f"Loaded {len(email_to_id)} Drata users (email->id).")
+
+    print("Loading Drata assets (externalId->assetId) for upsert...")
+    external_to_asset_id = build_existing_assets_by_external_id()
+    print(f"Loaded {len(external_to_asset_id)} Drata assets with externalId.")
+
+    # Iterate workspaces and upsert
+    created = updated = skipped = 0
+    print("Fetching AWS WorkSpaces and syncing to Drata...")
+
+    for ws in list_workspaces(ws_client):
+        ws_id = ws.get("WorkspaceId")
+        if not ws_id:
+            skipped += 1
+            continue
+
+        owner = ws.get("UserName")
+        try:
+            owner_id = workspace_owner_id(owner, email_to_id)
+        except RuntimeError as e:
+            print(f"SKIP {ws_id}: {e}", file=sys.stderr)
+            skipped += 1
+            continue
+
+        create_payload, update_payload = make_asset_payload(ws, acct, owner_id)
+
+        if ws_id in external_to_asset_id:
+            asset_id = external_to_asset_id[ws_id]
+            # Update only supports description + notes
+            drata_put(f"/assets/{asset_id}", update_payload)
+            updated += 1
+            print(f"UPDATED assetId={asset_id} externalId={ws_id}")
+        else:
+            resp = drata_post("/assets", create_payload)
+            new_id = resp.get("id")
+            created += 1
+            if isinstance(new_id, int):
+                external_to_asset_id[ws_id] = new_id
+            print(f"CREATED assetId={new_id} externalId={ws_id}")
+
+        # tiny delay to be polite (Drata rate limit exists)
+        time.sleep(0.05)
+
+    print(f"Done. created={created} updated={updated} skipped={skipped}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
